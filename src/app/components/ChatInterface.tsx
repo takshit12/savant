@@ -13,9 +13,10 @@ interface Message {
 }
 
 interface ApiResponse {
-  message: string;
+  message?: string;
   error?: string;
   details?: string;
+  [key: string]: any;
 }
 
 interface ChatInterfaceProps {
@@ -234,8 +235,16 @@ export default function ChatInterface({ tool, onClose }: ChatInterfaceProps) {
       
       let errorMessage = 'An unexpected error occurred';
       
-      if (err && typeof err === 'object' && 'message' in err) {
-        errorMessage = String(err.message);
+      // Type-safe error checking
+      if (err && typeof err === 'object') {
+        if ('response' in err && err.response && typeof err.response === 'object') {
+          const axiosResponse = err.response as { data?: { error?: string } };
+          if (axiosResponse.data?.error) {
+            errorMessage = axiosResponse.data.error;
+          }
+        } else if (err instanceof Error) {
+          errorMessage = err.message;
+        }
       }
       
       setError(errorMessage);

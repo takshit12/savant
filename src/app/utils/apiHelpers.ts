@@ -66,33 +66,42 @@ export async function callAssistantWebhook(
       data: response.data,
       status: response.status
     };
-  } catch (error) {
+  } catch (error: unknown) {
     console.error(`APIHelper: Error calling ${agentId} webhook:`, error);
     
     let errorMessage = "Sorry, there was an error processing your request.";
     let errorDetails = "";
     let statusCode = 500;
     
-    if (axios.isAxiosError(error)) {
-      if (error.code === 'ECONNABORTED') {
+    // Type-safe error checking
+    if (error && typeof error === 'object') {
+      // Check for timeout error
+      if ('code' in error && error.code === 'ECONNABORTED') {
         errorMessage = "Request timed out";
         errorDetails = `The server took too long to respond (timeout: ${webhookConfig.timeout || DEFAULT_WEBHOOK_TIMEOUT}ms)`;
         statusCode = 504;
-      } else if (error.response) {
-        statusCode = error.response.status;
-        errorMessage = `HTTP Error ${error.response.status}: ${error.response.statusText}`;
-        
-        if (error.response.data) {
-          if (error.response.data.error) {
-            errorDetails = error.response.data.error;
-            if (error.response.data.details) {
-              errorDetails += ` - ${error.response.data.details}`;
+      } 
+      // Check for axios response error
+      else if ('response' in error && error.response && typeof error.response === 'object') {
+        const axiosResponse = error.response as { status?: number, statusText?: string, data?: any };
+        if (axiosResponse.status) {
+          statusCode = axiosResponse.status;
+          errorMessage = `HTTP Error ${axiosResponse.status}: ${axiosResponse.statusText || 'Unknown Error'}`;
+          
+          if (axiosResponse.data) {
+            if (axiosResponse.data.error) {
+              errorDetails = axiosResponse.data.error;
+              if (axiosResponse.data.details) {
+                errorDetails += ` - ${axiosResponse.data.details}`;
+              }
             }
           }
         }
+      } 
+      // Handle standard errors
+      else if (error instanceof Error) {
+        errorMessage = error.message;
       }
-    } else if (error instanceof Error) {
-      errorMessage = error.message;
     }
     
     return {
