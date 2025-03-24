@@ -31,6 +31,13 @@ let agents: Tool[] = [
     icon: '🐦',
     webhookUrl: '/api/agents/xthreads',
   },
+  {
+    id: 'podcastflow',
+    name: 'Podcast Flow Strategist',
+    description: 'Plan, structure, and optimize your podcast content with AI assistance',
+    icon: '🎙️',
+    category: 'content',
+  },
 ];
 
 /**

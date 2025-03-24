@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getWebhookConfig, DEFAULT_WEBHOOK_TIMEOUT } from './webhookRegistry';
 
 /**
  * Assistant webhook registry - add new webhooks here as needed
@@ -23,18 +24,20 @@ export async function callAssistantWebhook(
   message: string,
   additionalParams: Record<string, any> = {}
 ) {
-  // Determine the correct webhook URL
-  let webhookUrl = '';
+  // Get webhook configuration
+  const webhookConfig = getWebhookConfig(agentId);
   
-  if (WEBHOOK_URLS[agentId]) {
-    webhookUrl = WEBHOOK_URLS[agentId];
-  } else {
+  if (!webhookConfig) {
+    console.warn(`No webhook configuration found for agent ${agentId}, falling back to API route`);
     // Fall back to the API route if no direct webhook is defined
-    webhookUrl = `/api/agents/${agentId}`;
-    console.warn(`No direct webhook URL configured for agent ${agentId}, falling back to API route`);
+    return {
+      success: false,
+      error: `No webhook configuration found for agent ${agentId}`,
+      status: 404
+    };
   }
   
-  console.log(`APIHelper: Calling webhook for ${agentId} at ${webhookUrl}`);
+  console.log(`APIHelper: Calling webhook for ${agentId} at ${webhookConfig.url}`);
   
   // Prepare request payload
   const payload = {
@@ -46,10 +49,11 @@ export async function callAssistantWebhook(
   
   // Make request with timeout
   try {
-    const response = await axios.post(webhookUrl, payload, {
-      timeout: DEFAULT_TIMEOUT,
+    const response = await axios.post(webhookConfig.url, payload, {
+      timeout: webhookConfig.timeout || DEFAULT_WEBHOOK_TIMEOUT,
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...webhookConfig.additionalHeaders
       }
     });
     
@@ -71,8 +75,8 @@ export async function callAssistantWebhook(
     
     if (axios.isAxiosError(error)) {
       if (error.code === 'ECONNABORTED') {
-        errorMessage = "Request timed out after 2 minutes";
-        errorDetails = "The server took too long to respond";
+        errorMessage = "Request timed out";
+        errorDetails = `The server took too long to respond (timeout: ${webhookConfig.timeout || DEFAULT_WEBHOOK_TIMEOUT}ms)`;
         statusCode = 504;
       } else if (error.response) {
         statusCode = error.response.status;

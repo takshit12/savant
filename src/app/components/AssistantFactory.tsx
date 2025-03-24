@@ -4,6 +4,7 @@ import { ReactNode } from 'react';
 import { Tool } from '../types/Tool';
 import BaseAssistantInterface from './BaseAssistantInterface';
 import XThreadsInterface from './XThreadsInterface';
+import PodcastFlowInterface from './PodcastFlowInterface';
 
 type AssistantFactoryProps = {
   tool: Tool;
@@ -19,6 +20,8 @@ export default function AssistantFactory({ tool, onClose }: AssistantFactoryProp
   switch (tool.id) {
     case 'xthreads':
       return <XThreadsInterface tool={tool} onClose={onClose} />;
+    case 'podcastflow':
+      return <PodcastFlowInterface tool={tool} onClose={onClose} />;
       
     // Add new assistants here
     // case 'your-new-assistant-id':

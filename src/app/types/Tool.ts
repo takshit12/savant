@@ -3,5 +3,5 @@ export interface Tool {
   name: string;
   description: string;
   icon: string;
-  webhookUrl: string;
+  category: 'social' | 'content' | 'development' | 'analysis' | 'other';
 } 
