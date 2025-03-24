@@ -1,5 +1,23 @@
 import { NextResponse } from 'next/server';
 
+// Helper to create a response with CORS headers
+function corsResponse(body: any, status = 200) {
+  return new NextResponse(JSON.stringify(body), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*', // Allow all origins
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    },
+  });
+}
+
+// Handle OPTIONS requests for CORS
+export async function OPTIONS() {
+  return corsResponse({ success: true });
+}
+
 export async function POST(request: Request) {
   try {
     console.log('X/Threads Assistant: Received request');
@@ -16,71 +34,86 @@ export async function POST(request: Request) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minutes timeout
     
-    const response = await fetch(
-      webhookUrl,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          message,
-          source: 'savant-tools-ui',
-          toolId,
-          platform,
-          maxLength: platform === 'x' ? 280 : 500,
-        }),
-        signal: controller.signal,
-      }
-    );
-    
-    clearTimeout(timeoutId); // Clear the timeout if the request completes
-    
-    console.log(`X/Threads Assistant: Webhook responded with status: ${response.status}`);
+    try {
+      const response = await fetch(
+        webhookUrl,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            message,
+            source: 'savant-tools-ui',
+            toolId,
+            platform,
+            maxLength: platform === 'x' ? 280 : 500,
+          }),
+          signal: controller.signal,
+        }
+      );
+      
+      clearTimeout(timeoutId); // Clear the timeout if the request completes
+      
+      console.log(`X/Threads Assistant: Webhook responded with status: ${response.status}`);
 
-    // For non-200 responses, handle the error explicitly
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`X/Threads Assistant: Error response: ${errorText}`);
-      return NextResponse.json(
+      // For non-200 responses, handle the error explicitly
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`X/Threads Assistant: Error response: ${errorText}`);
+        return corsResponse(
+          { 
+            error: `Failed to process request. Webhook responded with status: ${response.status}`,
+            details: errorText
+          },
+          response.status
+        );
+      }
+
+      // Get the raw text response instead of parsing JSON
+      const textResponse = await response.text();
+      console.log(`X/Threads Assistant: Raw response: "${textResponse.substring(0, 100)}${textResponse.length > 100 ? '...' : ''}"`);
+      
+      // Return the raw text response without parsing JSON
+      return corsResponse({
+        message: textResponse,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      console.error('X/Threads Assistant: Fetch error:', fetchError);
+      
+      // Check if it's a timeout error
+      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+        return corsResponse(
+          { 
+            error: 'Request timed out after 2 minutes',
+            details: 'The server took too long to respond'
+          },
+          504
+        );
+      }
+      
+      // Handle network errors specifically for Netlify
+      return corsResponse(
         { 
-          error: `Failed to process request. Webhook responded with status: ${response.status}`,
-          details: errorText
+          error: 'Network error when contacting the webhook',
+          details: fetchError instanceof Error ? fetchError.message : 'Unknown network error',
+          isNetworkError: true
         },
-        { status: response.status }
+        502
       );
     }
-
-    // Get the raw text response instead of parsing JSON
-    const textResponse = await response.text();
-    console.log(`X/Threads Assistant: Raw response: "${textResponse.substring(0, 100)}${textResponse.length > 100 ? '...' : ''}"`);
-    
-    // Return the raw text response without parsing JSON
-    return NextResponse.json({
-      message: textResponse,
-      timestamp: new Date().toISOString(),
-    });
   } catch (error: unknown) {
     console.error('X/Threads Assistant: Unexpected error:', error);
     
-    // Check if it's a timeout error
-    if (error instanceof Error && error.name === 'AbortError') {
-      return NextResponse.json(
-        { 
-          error: 'Request timed out after 2 minutes',
-          details: 'The server took too long to respond'
-        },
-        { status: 504 }
-      );
-    }
-    
-    return NextResponse.json(
+    return corsResponse(
       { 
         error: 'Failed to process request due to unexpected error', 
         details: error instanceof Error ? error.message : 'Unknown error',
         stack: error instanceof Error ? error.stack : undefined
       },
-      { status: 500 }
+      500
     );
   }
 } 

@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import { Tool } from '../types/Tool';
+import LoadingSpinner from './LoadingSpinner';
 
 interface Message {
   id: string;
@@ -20,6 +21,7 @@ export default function ChatInterface({ tool, onClose }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Scroll to bottom of chat whenever messages change
@@ -27,10 +29,91 @@ export default function ChatInterface({ tool, onClose }: ChatInterfaceProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Format raw response for display
+  const formatResponse = (rawResponse: string): string => {
+    try {
+      console.log("Raw response to format:", rawResponse);
+      
+      // Clean up the boxed format
+      if (rawResponse.includes('\\boxed{')) {
+        // Extract content from between \boxed{ and the last }
+        let content = rawResponse.replace('\\boxed{', '').trim();
+        
+        // Remove the last closing brace if it exists
+        if (content.endsWith('}')) {
+          content = content.substring(0, content.length - 1).trim();
+        }
+        
+        console.log("Extracted from boxed format:", content);
+        return content;
+      }
+      
+      // Try to parse as JSON if it starts with [ or {
+      if (rawResponse.trim().startsWith('[') || rawResponse.trim().startsWith('{')) {
+        try {
+          const parsedData = JSON.parse(rawResponse);
+          
+          // Check if it's an array with an output field that contains JSON string
+          if (Array.isArray(parsedData) && parsedData[0]?.output) {
+            let output = parsedData[0].output;
+            
+            // Remove boxed formatting and backticks from the output field
+            if (output.includes('\\boxed{')) {
+              output = output
+                .replace('\\boxed{', '')
+                .replace(/}$/, '');
+            }
+            
+            if (output.includes('```json')) {
+              output = output
+                .replace(/```json\n/, '')
+                .replace(/\n```/, '');
+            }
+            
+            try {
+              // Try to parse as JSON again
+              const innerJson = JSON.parse(output);
+              
+              // Format output nicely if it's an object
+              let formattedOutput = "";
+              
+              // Handle numbered keys or regular keys
+              const keys = Object.keys(innerJson).sort();
+              for (const key of keys) {
+                formattedOutput += `${innerJson[key]}\n\n`;
+              }
+              
+              return formattedOutput;
+            } catch (e) {
+              // If inner parsing fails, return cleaned output
+              return output;
+            }
+          }
+          
+          // Regular JSON formatting
+          return JSON.stringify(parsedData, null, 2);
+        } catch (e) {
+          console.error("Error parsing JSON:", e);
+          // Fall through to the default return
+        }
+      }
+      
+      // Return unmodified if not handled by other cases
+      return rawResponse;
+    } catch (e) {
+      console.error('Error formatting response:', e);
+      // Return original response if parsing fails
+      return rawResponse;
+    }
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!inputValue.trim() || isLoading) return;
+    
+    // Clear any previous errors
+    setError(null);
     
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -44,26 +127,58 @@ export default function ChatInterface({ tool, onClose }: ChatInterfaceProps) {
     setIsLoading(true);
     
     try {
+      console.log(`ChatInterface: Sending request to ${tool.webhookUrl}`);
+      
       // Call the webhook for this specific tool
       const response = await axios.post(tool.webhookUrl, {
         message: inputValue,
         toolId: tool.id,
+      }, {
+        timeout: 120000, // 2 minute timeout on the client side too
       });
+      
+      console.log('ChatInterface: Received response:', response.status);
+      console.log('ChatInterface: Response data:', response.data);
+      
+      // Format the response message for better display
+      const formattedContent = formatResponse(response.data.message || "");
       
       const agentMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: response.data.message || "Sorry, I couldn't process that request.",
+        content: formattedContent || "Sorry, I couldn't process that request.",
         isUser: false,
         timestamp: new Date(),
       };
       
       setMessages((prev) => [...prev, agentMessage]);
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('ChatInterface: Error sending message:', error);
+      
+      let errorContent = "Sorry, there was an error processing your request.";
+      
+      // Try to extract more detailed error information
+      if (axios.isAxiosError(error) && error.response) {
+        console.error('ChatInterface: Error response data:', error.response.data);
+        
+        if (error.response.data.error) {
+          errorContent = `Error: ${error.response.data.error}`;
+          if (error.response.data.details) {
+            errorContent += `\n\nDetails: ${error.response.data.details}`;
+          }
+        }
+        
+        setError(`HTTP Error ${error.response.status}: ${error.response.statusText}`);
+      } else if (axios.isAxiosError(error) && error.code === 'ECONNABORTED') {
+        // Handle client-side timeout
+        errorContent = "Error: Request timed out. The server took too long to respond.";
+        setError("Request timed out after 2 minutes");
+      } else if (error instanceof Error) {
+        setError(`Error: ${error.message}`);
+      }
       
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: "Sorry, there was an error processing your request.",
+        content: errorContent,
         isUser: false,
         timestamp: new Date(),
       };
@@ -91,22 +206,32 @@ export default function ChatInterface({ tool, onClose }: ChatInterfaceProps) {
         </div>
         
         <div className="chat-messages">
+          {error && (
+            <div className="bg-red-50 border-l-4 border-red-500 p-4 m-4 text-red-700">
+              <p className="font-bold">Error</p>
+              <p>{error}</p>
+            </div>
+          )}
+          
           {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-400">
               <p>No messages yet. Start a conversation!</p>
             </div>
           ) : (
-            messages.map((message) => (
-              <div
-                key={message.id}
-                className={message.isUser ? 'user-message' : 'agent-message'}
-              >
-                <p>{message.content}</p>
-                <div className="text-xs text-gray-500 mt-1">
-                  {message.timestamp.toLocaleTimeString()}
+            <>
+              {messages.map((message) => (
+                <div
+                  key={message.id}
+                  className={message.isUser ? 'user-message' : 'agent-message'}
+                >
+                  <p className="whitespace-pre-wrap">{message.content}</p>
+                  <div className="text-xs text-gray-500 mt-1">
+                    {message.timestamp.toLocaleTimeString()}
+                  </div>
                 </div>
-              </div>
-            ))
+              ))}
+              {isLoading && <LoadingSpinner />}
+            </>
           )}
           <div ref={messagesEndRef} />
         </div>

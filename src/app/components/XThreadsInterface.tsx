@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import { Tool } from '../types/Tool';
+import LoadingSpinner from './LoadingSpinner';
 
 interface Message {
   id: string;
@@ -40,42 +41,73 @@ export default function XThreadsInterface({ tool, onClose }: XThreadsInterfacePr
   // Format raw response for display
   const formatResponse = (rawResponse: string): string => {
     try {
-      // Try to parse as JSON
-      if (rawResponse.trim().startsWith('[') || rawResponse.trim().startsWith('{')) {
-        const parsedData = JSON.parse(rawResponse);
+      console.log("Raw response to format:", rawResponse);
+      
+      // Clean up the boxed format
+      if (rawResponse.includes('\\boxed{')) {
+        // Extract content from between \boxed{ and the last }
+        let content = rawResponse.replace('\\boxed{', '').trim();
         
-        // Check if it's an array with an output field that contains JSON string
-        if (Array.isArray(parsedData) && parsedData[0]?.output) {
-          let output = parsedData[0].output;
-          
-          // Remove boxed formatting and backticks
-          output = output.replace('\\boxed{```json\n', '').replace('\n```}', '');
-          
-          try {
-            // Parse the inner JSON
-            const innerJson = JSON.parse(output);
-            
-            // Format thread posts to display nicely
-            let formattedOutput = "Generated Thread:\n\n";
-            
-            // Iterate through all properties in order if they are numbered
-            const keys = Object.keys(innerJson).sort();
-            for (const key of keys) {
-              formattedOutput += `${innerJson[key]}\n\n`;
-            }
-            
-            return formattedOutput;
-          } catch (e) {
-            // If inner parsing fails, return cleaned output
-            return output;
-          }
+        // Remove the last closing brace if it exists
+        if (content.endsWith('}')) {
+          content = content.substring(0, content.length - 1).trim();
         }
         
-        // Regular JSON formatting
-        return JSON.stringify(parsedData, null, 2);
+        console.log("Extracted from boxed format:", content);
+        return content;
       }
       
-      // Return unmodified if not JSON
+      // Try to parse as JSON if it starts with [ or {
+      if (rawResponse.trim().startsWith('[') || rawResponse.trim().startsWith('{')) {
+        try {
+          const parsedData = JSON.parse(rawResponse);
+          
+          // Check if it's an array with an output field that contains JSON string
+          if (Array.isArray(parsedData) && parsedData[0]?.output) {
+            let output = parsedData[0].output;
+            
+            // Remove boxed formatting and backticks from the output field
+            if (output.includes('\\boxed{')) {
+              output = output
+                .replace('\\boxed{', '')
+                .replace(/}$/, '');
+            }
+            
+            if (output.includes('```json')) {
+              output = output
+                .replace(/```json\n/, '')
+                .replace(/\n```/, '');
+            }
+            
+            try {
+              // Try to parse as JSON again
+              const innerJson = JSON.parse(output);
+              
+              // Format thread posts to display nicely
+              let formattedOutput = "Generated Thread:\n\n";
+              
+              // Iterate through all properties in order if they are numbered
+              const keys = Object.keys(innerJson).sort();
+              for (const key of keys) {
+                formattedOutput += `${innerJson[key]}\n\n`;
+              }
+              
+              return formattedOutput;
+            } catch (e) {
+              // If inner parsing fails, return cleaned output
+              return output;
+            }
+          }
+          
+          // Regular JSON formatting
+          return JSON.stringify(parsedData, null, 2);
+        } catch (e) {
+          console.error("Error parsing JSON:", e);
+          // Fall through to the default return
+        }
+      }
+      
+      // Return unmodified if not handled by other cases
       return rawResponse;
     } catch (e) {
       console.error('Error formatting response:', e);
@@ -111,6 +143,8 @@ export default function XThreadsInterface({ tool, onClose }: XThreadsInterfacePr
         message: inputValue,
         toolId: tool.id,
         platform: platform,
+      }, {
+        timeout: 120000, // 2 minute timeout on the client side too
       });
       
       console.log('XThreadsInterface: Received response:', response.status);
@@ -149,6 +183,10 @@ export default function XThreadsInterface({ tool, onClose }: XThreadsInterfacePr
         }
         
         setError(`HTTP Error ${error.response.status}: ${error.response.statusText}`);
+      } else if (axios.isAxiosError(error) && error.code === 'ECONNABORTED') {
+        // Handle client-side timeout
+        errorContent = "Error: Request timed out. The server took too long to respond.";
+        setError("Request timed out after 2 minutes");
       } else if (error instanceof Error) {
         setError(`Error: ${error.message}`);
       }
@@ -195,17 +233,20 @@ export default function XThreadsInterface({ tool, onClose }: XThreadsInterfacePr
               <p>No messages yet. Enter your content idea to get optimized social posts!</p>
             </div>
           ) : (
-            messages.map((message) => (
-              <div
-                key={message.id}
-                className={message.isUser ? 'user-message' : 'agent-message'}
-              >
-                <p className="whitespace-pre-wrap">{message.content}</p>
-                <div className="text-xs text-gray-500 mt-1">
-                  {message.timestamp.toLocaleTimeString()}
+            <>
+              {messages.map((message) => (
+                <div
+                  key={message.id}
+                  className={message.isUser ? 'user-message' : 'agent-message'}
+                >
+                  <p className="whitespace-pre-wrap">{message.content}</p>
+                  <div className="text-xs text-gray-500 mt-1">
+                    {message.timestamp.toLocaleTimeString()}
+                  </div>
                 </div>
-              </div>
-            ))
+              ))}
+              {isLoading && <LoadingSpinner />}
+            </>
           )}
           <div ref={messagesEndRef} />
         </div>
