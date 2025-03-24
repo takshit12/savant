@@ -116,12 +116,17 @@ export default function XThreadsInterface({ tool, onClose }: XThreadsInterfacePr
       console.log('XThreadsInterface: Received response:', response.status);
       console.log('XThreadsInterface: Response data:', response.data);
       
+      // Check if we have a message in the response
+      if (!response.data || (!response.data.message && response.data.message !== '')) {
+        throw new Error('Invalid response format: missing message');
+      }
+      
       // Format the response message for better display
       const formattedContent = formatResponse(response.data.message);
       
       const agentMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: formattedContent || "No response content received.",
+        content: formattedContent,
         isUser: false,
         timestamp: new Date(),
       };
