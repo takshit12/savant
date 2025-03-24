@@ -34,105 +34,46 @@ export function formatResponse(rawResponse: string): string {
         if (Array.isArray(parsedData) && parsedData[0]?.output) {
           let output = parsedData[0].output;
           
-          // Clean up newline escapes in the output string
+          // First, handle the double backslash before newline
+          output = output.replace(/\\\\n/g, '\n');
+          
+          // Then handle any remaining escaped newlines
           output = output.replace(/\\n/g, '\n');
           
-          // Remove boxed formatting and backticks from the output field
-          if (output.includes('\\boxed{')) {
-            output = output
-              .replace('\\boxed{', '')
-              .replace(/}$/, '');
-          }
-          
-          if (output.includes('```json')) {
-            output = output
-              .replace(/```json\n/, '')
-              .replace(/\n```/, '');
-          }
-          
-          // Handle any two-backslash escapes (common in JSON strings)
-          output = output.replace(/\\\\/g, '\\');
-          
-          // Remove trailing curly brace if it exists
+          // Remove any trailing curly brace from JSON
           if (output.endsWith('}')) {
             output = output.substring(0, output.length - 1).trim();
           }
           
-          try {
-            // Try to parse as JSON in case it's a JSON string
-            const innerJson = JSON.parse(output);
-            
-            // Format thread posts to display nicely
-            let formattedOutput = "Generated Content:\n\n";
-            
-            // Iterate through all properties in order if they are numbered
-            const keys = Object.keys(innerJson).sort();
-            for (const key of keys) {
-              formattedOutput += `${innerJson[key]}\n\n`;
-            }
-            
-            return formattedOutput;
-          } catch (e) {
-            // If inner parsing fails, check if it's a thread-like format with emojis and numbering
-            // This handles the case where the output contains a thread but isn't in JSON format
-            
-            // Check if the content already has paragraph breaks
-            const hasMultipleParagraphs = output.includes('\n\n');
-            
-            if (hasMultipleParagraphs) {
-              // Already formatted with paragraphs, just return cleaned
-              return output.trim();
-            }
-            
-            // Split by line breaks and keep only non-empty lines
-            const lines = output.split('\n').filter((line: string) => line.trim() !== '');
-            
-            // If there are enough lines to be a thread, format it nicely
-            if (lines.length > 1) {
-              return lines.join('\n\n');
-            }
-            
-            // If we couldn't split effectively, just return the cleaned output
+          // If the content has proper line breaks, return it as is
+          if (output.includes('\n\n')) {
             return output.trim();
           }
+          
+          // Otherwise format it with proper spacing
+          const lines = output.split('\n').filter((line: string) => line.trim() !== '');
+          return lines.join('\n\n');
         }
         
-        // Handle direct response structure from the webhook
-        // Sometimes the webhook returns an array of objects with text properties
+        // If it's a simple array of messages
         if (Array.isArray(parsedData)) {
-          // Check if items have text/content properties
-          const contentItems = parsedData.map(item => {
-            return item.text || item.content || item.message || JSON.stringify(item);
+          const messages = parsedData.map(item => {
+            if (typeof item === 'string') return item;
+            return item.text || item.content || item.message || item.output || JSON.stringify(item);
           });
-          
-          if (contentItems.length > 0) {
-            return contentItems.join('\n\n');
-          }
+          return messages.join('\n\n');
         }
         
-        // Regular JSON formatting - nicely format if it's an object
+        // If it's an object with a message/text/content field
         if (typeof parsedData === 'object' && parsedData !== null) {
-          // Check for common response fields
-          if (parsedData.text || parsedData.content || parsedData.message) {
-            return parsedData.text || parsedData.content || parsedData.message;
-          }
-          
-          // If it's a simple object with numbered keys (like thread posts)
-          const keys = Object.keys(parsedData);
-          if (keys.some(key => !isNaN(Number(key)) || key.includes('/'))) {
-            let formattedOutput = "";
-            keys.sort().forEach(key => {
-              formattedOutput += `${parsedData[key]}\n\n`;
-            });
-            return formattedOutput;
-          }
+          return parsedData.message || parsedData.text || parsedData.content || JSON.stringify(parsedData, null, 2);
         }
         
         // Default JSON stringification
         return JSON.stringify(parsedData, null, 2);
       } catch (e) {
         console.error("ResponseFormatter: Error parsing JSON:", e);
-        // Fall through to the default return
+        return rawResponse;
       }
     }
     
@@ -140,7 +81,6 @@ export function formatResponse(rawResponse: string): string {
     return rawResponse;
   } catch (e) {
     console.error('ResponseFormatter: Error formatting response:', e);
-    // Return original response if parsing fails
     return rawResponse || "No response content received.";
   }
 } 
