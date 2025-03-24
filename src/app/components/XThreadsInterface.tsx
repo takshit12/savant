@@ -67,7 +67,7 @@ export default function XThreadsInterface({ tool, onClose }: XThreadsInterfacePr
         try {
           const parsedData = JSON.parse(rawResponse);
           
-          // Check if it's an array with an output field that contains JSON string
+          // Handle the specific format with an array containing an object with "output" property
           if (Array.isArray(parsedData) && parsedData[0]?.output) {
             let output = parsedData[0].output;
             
@@ -84,8 +84,16 @@ export default function XThreadsInterface({ tool, onClose }: XThreadsInterfacePr
                 .replace(/\n```/, '');
             }
             
+            // Clean up escaped newlines
+            output = output.replace(/\\n/g, '\n');
+            
+            // Remove trailing curly brace if it exists
+            if (output.endsWith('}')) {
+              output = output.substring(0, output.length - 1).trim();
+            }
+            
             try {
-              // Try to parse as JSON again
+              // Try to parse as JSON in case it's a JSON string
               const innerJson = JSON.parse(output);
               
               // Format thread posts to display nicely
@@ -99,7 +107,15 @@ export default function XThreadsInterface({ tool, onClose }: XThreadsInterfacePr
               
               return formattedOutput;
             } catch (e) {
-              // If inner parsing fails, return cleaned output
+              // If inner parsing fails, format as a thread directly
+              // Output is likely just a series of tweets/posts separated by newlines
+              const posts = output.split('\n\n').filter((post: string) => post.trim() !== '');
+              
+              if (posts.length > 0) {
+                return "Generated Thread:\n\n" + posts.join('\n\n');
+              }
+              
+              // If we couldn't split by double newlines, just return the cleaned output
               return output;
             }
           }
