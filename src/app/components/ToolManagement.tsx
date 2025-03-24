@@ -1,13 +1,10 @@
 'use client';
 
-import ToolGrid from './ToolGrid';
-import ChatInterface from './ChatInterface';
-import XThreadsInterface from './XThreadsInterface';
 import { useTools } from '../hooks/useTools';
+import ToolGrid from './ToolGrid';
+import AssistantFactory from './AssistantFactory';
 
-interface ToolManagementProps {
-  // Additional props can be added here in the future
-}
+interface ToolManagementProps {}
 
 export default function ToolManagement({}: ToolManagementProps) {
   const { tools, selectedTool, isLoading, selectTool, closeTool } = useTools();
@@ -20,16 +17,11 @@ export default function ToolManagement({}: ToolManagementProps) {
     );
   }
 
-  const renderSelectedToolInterface = () => {
+  const renderSelectedTool = () => {
     if (!selectedTool) return null;
-
-    // Use the specialized interface for X/Threads Assistant
-    if (selectedTool.id === 'xthreads') {
-      return <XThreadsInterface tool={selectedTool} onClose={closeTool} />;
-    }
-
-    // Use the default chat interface for other tools
-    return <ChatInterface tool={selectedTool} onClose={closeTool} />;
+    
+    // Use AssistantFactory to render the appropriate interface for the selected tool
+    return <AssistantFactory tool={selectedTool} onClose={closeTool} />;
   };
 
   return (
@@ -43,7 +35,7 @@ export default function ToolManagement({}: ToolManagementProps) {
         </p>
       </header>
 
-      {selectedTool ? renderSelectedToolInterface() : (
+      {selectedTool ? renderSelectedTool() : (
         <ToolGrid tools={tools} onSelectTool={selectTool} />
       )}
     </div>

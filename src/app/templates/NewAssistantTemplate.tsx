@@ -1,39 +1,43 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Tool } from '../types/Tool';
-import LoadingSpinner from './LoadingSpinner';
 import { formatResponse } from '../utils/responseFormatter';
 import { callAssistantWebhook } from '../utils/apiHelpers';
-import { BaseAssistantProps, Message } from './BaseAssistantInterface';
+import { BaseAssistantProps, Message } from '../components/BaseAssistantInterface';
+import LoadingSpinner from '../components/LoadingSpinner';
 
-interface XThreadsInterfaceProps extends BaseAssistantProps {}
+/**
+ * Template for creating a new assistant interface
+ * 
+ * Steps to add a new assistant:
+ * 1. Copy this file and rename it (e.g., YourNewAssistantInterface.tsx)
+ * 2. Add your assistant's webhook URL to src/app/utils/apiHelpers.ts in the WEBHOOK_URLS object
+ * 3. Customize this component with any special features your assistant needs
+ * 4. Add your assistant to the AssistantFactory in src/app/components/AssistantFactory.tsx
+ * 5. Add your assistant to the registry in src/app/utils/agentRegistry.ts
+ */
 
-export default function XThreadsInterface({ tool, onClose }: XThreadsInterfaceProps) {
+interface NewAssistantInterfaceProps extends BaseAssistantProps {}
+
+export default function NewAssistantInterface({ tool, onClose }: NewAssistantInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [platform, setPlatform] = useState<'x' | 'threads'>('x');
-  const [charCount, setCharCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  const maxChars = platform === 'x' ? 280 : 500;
+  
+  // Custom state for this assistant's specific features
+  // const [customSetting, setCustomSetting] = useState<string>('default');
 
   // Scroll to bottom of chat whenever messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Update character count when input changes
-  useEffect(() => {
-    setCharCount(inputValue.length);
-  }, [inputValue]);
-
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!inputValue.trim() || isLoading || charCount > maxChars) return;
+    if (!inputValue.trim() || isLoading) return;
     
     // Clear any previous errors
     setError(null);
@@ -50,10 +54,11 @@ export default function XThreadsInterface({ tool, onClose }: XThreadsInterfacePr
     setIsLoading(true);
     
     try {
-      // Call the assistant webhook with platform-specific parameters
+      // Call the assistant webhook with any additional parameters specific to this assistant
       const result = await callAssistantWebhook(tool.id, inputValue, {
-        platform,
-        maxLength: maxChars
+        // Add any custom parameters here
+        // customParam1: 'value1',
+        // customParam2: 'value2',
       });
       
       if (result.success) {
@@ -110,9 +115,11 @@ export default function XThreadsInterface({ tool, onClose }: XThreadsInterfacePr
             </div>
           )}
           
+          {/* Custom UI elements for this assistant can go here */}
+          
           {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-400">
-              <p>No messages yet. Enter your content idea to get optimized social posts!</p>
+              <p>No messages yet. Start a conversation!</p>
             </div>
           ) : (
             <>
@@ -133,47 +140,27 @@ export default function XThreadsInterface({ tool, onClose }: XThreadsInterfacePr
           <div ref={messagesEndRef} />
         </div>
         
+        {/* 
+          Custom form elements for this assistant can go here
+          For example, specialized inputs, selectors, etc.
+        */}
+        
         <form onSubmit={handleSendMessage} className="chat-input-container">
-          <div className="mb-3 flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <label className="flex items-center space-x-2">
-                <input 
-                  type="radio" 
-                  name="platform" 
-                  checked={platform === 'x'} 
-                  onChange={() => setPlatform('x')} 
-                />
-                <span>X (Twitter)</span>
-              </label>
-              <label className="flex items-center space-x-2">
-                <input 
-                  type="radio" 
-                  name="platform" 
-                  checked={platform === 'threads'} 
-                  onChange={() => setPlatform('threads')} 
-                />
-                <span>Threads</span>
-              </label>
-            </div>
-            <div className={`text-sm ${charCount > maxChars ? 'text-red-500 font-bold' : 'text-gray-500'}`}>
-              {charCount}/{maxChars}
-            </div>
-          </div>
-          
-          <div className="flex flex-col">
-            <textarea
+          <div className="flex">
+            <input
+              type="text"
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
-              placeholder="Enter your content idea..."
-              className={`flex-1 p-3 border ${charCount > maxChars ? 'border-red-500' : 'border-gray-300'} rounded-t-lg focus:outline-none focus:ring-2 focus:ring-primary-500 min-h-[120px]`}
+              placeholder="Type your message..."
+              className="flex-1 p-3 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
               disabled={isLoading}
             />
             <button
               type="submit"
-              className="px-4 py-3 bg-primary-600 text-white rounded-b-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-gray-300"
-              disabled={isLoading || !inputValue.trim() || charCount > maxChars}
+              className="px-4 py-2 bg-primary-600 text-white rounded-r-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-gray-300"
+              disabled={isLoading || !inputValue.trim()}
             >
-              {isLoading ? 'Generating...' : 'Generate Post'}
+              {isLoading ? '...' : 'Send'}
             </button>
           </div>
         </form>
