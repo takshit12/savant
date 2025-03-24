@@ -56,9 +56,20 @@ export default function XThreadsInterface({ tool, onClose }: XThreadsInterfacePr
         maxLength: maxChars
       });
       
+      console.log("XThreadsInterface: Raw response from webhook:", result.data);
+      
       if (result.success) {
-        // Format the response
-        const formattedContent = formatResponse(result.data);
+        // Format the response - handle both raw string and object responses
+        let responseToFormat = result.data;
+        
+        // If the data is nested in a message property, extract it
+        if (typeof result.data === 'object' && result.data !== null && 'message' in result.data) {
+          responseToFormat = result.data.message;
+          console.log("XThreadsInterface: Extracted message from response object:", responseToFormat);
+        }
+        
+        const formattedContent = formatResponse(responseToFormat);
+        console.log("XThreadsInterface: Formatted content:", formattedContent);
         
         const agentMessage: Message = {
           id: (Date.now() + 1).toString(),

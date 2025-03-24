@@ -55,14 +55,11 @@ export async function callAssistantWebhook(
     
     console.log(`APIHelper: ${agentId} webhook responded with status:`, response.status);
     
-    // Extract response text, handling different response formats
-    const responseText = typeof response.data === 'string'
-      ? response.data
-      : response.data.message || JSON.stringify(response.data);
-      
+    // Return the raw response data without trying to pre-format it
+    // Let the component-specific formatters handle the formatting
     return {
       success: true,
-      data: responseText,
+      data: response.data,
       status: response.status
     };
   } catch (error) {

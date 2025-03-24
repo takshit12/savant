@@ -11,6 +11,39 @@ export function formatResponse(rawResponse: string): string {
       return "No response content received.";
     }
     
+    // Handle the case where a raw string contains what looks like escaped JSON
+    // This happens when the API route returns the raw response from the webhook
+    if (typeof rawResponse === 'string' && 
+        (rawResponse.includes('[{"output"') || rawResponse.includes('{"output"'))) {
+      console.log("ResponseFormatter: Detected raw string with escaped JSON");
+      
+      try {
+        // Parse the string as JSON (this will handle a single level of escaping)
+        const parsedData = JSON.parse(rawResponse);
+        
+        // Check if we have the expected format
+        if (Array.isArray(parsedData) && parsedData[0]?.output) {
+          let output = parsedData[0].output;
+          
+          // First, handle the double backslash before newline
+          output = output.replace(/\\\\n/g, '\n');
+          
+          // Then handle any remaining escaped newlines
+          output = output.replace(/\\n/g, '\n');
+          
+          // Remove any trailing curly brace from JSON
+          if (output.endsWith('}')) {
+            output = output.substring(0, output.length - 1).trim();
+          }
+          
+          console.log("ResponseFormatter: Successfully processed escaped JSON output");
+          return output.trim();
+        }
+      } catch (e) {
+        console.log("ResponseFormatter: Failed to parse as escaped JSON, continuing with other formats");
+      }
+    }
+    
     // Clean up the boxed format
     if (rawResponse.includes('\\boxed{')) {
       // Extract content from between \boxed{ and the last }
@@ -26,7 +59,8 @@ export function formatResponse(rawResponse: string): string {
     }
     
     // Try to parse as JSON if it starts with [ or {
-    if (rawResponse.trim().startsWith('[') || rawResponse.trim().startsWith('{')) {
+    if (typeof rawResponse === 'string' && 
+        (rawResponse.trim().startsWith('[') || rawResponse.trim().startsWith('{'))) {
       try {
         const parsedData = JSON.parse(rawResponse);
         
