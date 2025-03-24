@@ -34,6 +34,11 @@ export default function ChatInterface({ tool, onClose }: ChatInterfaceProps) {
     try {
       console.log("Raw response to format:", rawResponse);
       
+      // Handle empty responses
+      if (!rawResponse || rawResponse.trim() === '') {
+        return "No response content received.";
+      }
+      
       // Clean up the boxed format
       if (rawResponse.includes('\\boxed{')) {
         // Extract content from between \boxed{ and the last }
@@ -90,7 +95,38 @@ export default function ChatInterface({ tool, onClose }: ChatInterfaceProps) {
             }
           }
           
-          // Regular JSON formatting
+          // Handle direct response structure from the webhook
+          // Sometimes the webhook returns an array of objects with text properties
+          if (Array.isArray(parsedData)) {
+            // Check if items have text/content properties
+            const contentItems = parsedData.map(item => {
+              return item.text || item.content || item.message || JSON.stringify(item);
+            });
+            
+            if (contentItems.length > 0) {
+              return contentItems.join('\n\n');
+            }
+          }
+          
+          // Regular JSON formatting - nicely format if it's an object
+          if (typeof parsedData === 'object' && parsedData !== null) {
+            // Check for common response fields
+            if (parsedData.text || parsedData.content || parsedData.message) {
+              return parsedData.text || parsedData.content || parsedData.message;
+            }
+            
+            // If it's a simple object with numbered keys (like thread posts)
+            const keys = Object.keys(parsedData);
+            if (keys.some(key => !isNaN(Number(key)) || key.includes('/'))) {
+              let formattedOutput = "";
+              keys.sort().forEach(key => {
+                formattedOutput += `${parsedData[key]}\n\n`;
+              });
+              return formattedOutput;
+            }
+          }
+          
+          // Default JSON stringification
           return JSON.stringify(parsedData, null, 2);
         } catch (e) {
           console.error("Error parsing JSON:", e);
@@ -103,7 +139,7 @@ export default function ChatInterface({ tool, onClose }: ChatInterfaceProps) {
     } catch (e) {
       console.error('Error formatting response:', e);
       // Return original response if parsing fails
-      return rawResponse;
+      return rawResponse || "No response content received.";
     }
   };
 
@@ -127,21 +163,47 @@ export default function ChatInterface({ tool, onClose }: ChatInterfaceProps) {
     setIsLoading(true);
     
     try {
-      console.log(`ChatInterface: Sending request to ${tool.webhookUrl}`);
+      // Extract the direct webhook URL from the tool's API endpoint if possible
+      // This assumes the webhookUrl is in the format "/api/agents/[id]"
+      let directWebhookUrl = tool.webhookUrl;
+      if (tool.webhookUrl.startsWith('/api/agents/')) {
+        // Extract the agent ID
+        const agentId = tool.webhookUrl.split('/').pop();
+        // Use the webhook directly based on the agent type
+        if (agentId === 'xthreads') {
+          directWebhookUrl = 'https://primary-production-260f.up.railway.app/webhook/0bb7d8c5-8866-4950-b7c7-45e5bbb8f683';
+        } else {
+          // For other agents, we'll still try the original URL but with a warning
+          console.warn(`ChatInterface: No direct webhook URL configured for agent ${agentId}, falling back to API route`);
+        }
+      }
       
-      // Call the webhook for this specific tool
-      const response = await axios.post(tool.webhookUrl, {
+      console.log(`ChatInterface: Sending request to ${directWebhookUrl}`);
+      
+      // Call the webhook
+      const response = await axios.post(directWebhookUrl, {
         message: inputValue,
+        source: 'savant-tools-ui',
         toolId: tool.id,
+        // Include platform for xthreads, use default for others
+        ...(tool.id === 'xthreads' && { platform: 'x', maxLength: 280 })
       }, {
-        timeout: 120000, // 2 minute timeout on the client side too
+        timeout: 120000, // 2 minute timeout
+        headers: {
+          'Content-Type': 'application/json'
+        }
       });
       
       console.log('ChatInterface: Received response:', response.status);
       console.log('ChatInterface: Response data:', response.data);
       
       // Format the response message for better display
-      const formattedContent = formatResponse(response.data.message || "");
+      // Handle both direct webhook responses and our API responses
+      const responseText = typeof response.data === 'string' 
+        ? response.data 
+        : response.data.message || JSON.stringify(response.data);
+      
+      const formattedContent = formatResponse(responseText);
       
       const agentMessage: Message = {
         id: (Date.now() + 1).toString(),

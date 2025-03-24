@@ -43,6 +43,11 @@ export default function XThreadsInterface({ tool, onClose }: XThreadsInterfacePr
     try {
       console.log("Raw response to format:", rawResponse);
       
+      // Handle empty responses
+      if (!rawResponse || rawResponse.trim() === '') {
+        return "No response content received.";
+      }
+      
       // Clean up the boxed format
       if (rawResponse.includes('\\boxed{')) {
         // Extract content from between \boxed{ and the last }
@@ -99,7 +104,38 @@ export default function XThreadsInterface({ tool, onClose }: XThreadsInterfacePr
             }
           }
           
-          // Regular JSON formatting
+          // Handle direct response structure from the webhook
+          // Sometimes the webhook returns an array of objects with text properties
+          if (Array.isArray(parsedData)) {
+            // Check if items have text/content properties
+            const contentItems = parsedData.map(item => {
+              return item.text || item.content || item.message || JSON.stringify(item);
+            });
+            
+            if (contentItems.length > 0) {
+              return contentItems.join('\n\n');
+            }
+          }
+          
+          // Regular JSON formatting - nicely format if it's an object
+          if (typeof parsedData === 'object' && parsedData !== null) {
+            // Check for common response fields
+            if (parsedData.text || parsedData.content || parsedData.message) {
+              return parsedData.text || parsedData.content || parsedData.message;
+            }
+            
+            // If it's a simple object with numbered keys (like thread posts)
+            const keys = Object.keys(parsedData);
+            if (keys.some(key => !isNaN(Number(key)) || key.includes('/'))) {
+              let formattedOutput = "";
+              keys.sort().forEach(key => {
+                formattedOutput += `${parsedData[key]}\n\n`;
+              });
+              return formattedOutput;
+            }
+          }
+          
+          // Default JSON stringification
           return JSON.stringify(parsedData, null, 2);
         } catch (e) {
           console.error("Error parsing JSON:", e);
@@ -112,7 +148,7 @@ export default function XThreadsInterface({ tool, onClose }: XThreadsInterfacePr
     } catch (e) {
       console.error('Error formatting response:', e);
       // Return original response if parsing fails
-      return rawResponse;
+      return rawResponse || "No response content received.";
     }
   };
 
@@ -136,31 +172,36 @@ export default function XThreadsInterface({ tool, onClose }: XThreadsInterfacePr
     setIsLoading(true);
     
     try {
-      console.log(`XThreadsInterface: Sending request to ${tool.webhookUrl} for platform: ${platform}`);
+      // Call the webhook directly instead of going through our API
+      const webhookUrl = 'https://primary-production-260f.up.railway.app/webhook/0bb7d8c5-8866-4950-b7c7-45e5bbb8f683';
+      console.log(`XThreadsInterface: Sending request directly to webhook: ${webhookUrl}`);
       
-      // Call the webhook for this specific tool
-      const response = await axios.post(tool.webhookUrl, {
+      const response = await axios.post(webhookUrl, {
         message: inputValue,
+        source: 'savant-tools-ui',
         toolId: tool.id,
         platform: platform,
+        maxLength: platform === 'x' ? 280 : 500,
       }, {
-        timeout: 120000, // 2 minute timeout on the client side too
+        timeout: 120000, // 2 minute timeout on the client side
+        headers: {
+          'Content-Type': 'application/json'
+        }
       });
       
       console.log('XThreadsInterface: Received response:', response.status);
       console.log('XThreadsInterface: Response data:', response.data);
       
-      // Check if we have a message in the response
-      if (!response.data || (!response.data.message && response.data.message !== '')) {
-        throw new Error('Invalid response format: missing message');
-      }
-      
       // Format the response message for better display
-      const formattedContent = formatResponse(response.data.message);
+      const responseText = typeof response.data === 'string' 
+        ? response.data 
+        : JSON.stringify(response.data);
+      
+      const formattedContent = formatResponse(responseText);
       
       const agentMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: formattedContent,
+        content: formattedContent || "No response content received.",
         isUser: false,
         timestamp: new Date(),
       };
