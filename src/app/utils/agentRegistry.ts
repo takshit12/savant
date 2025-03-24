@@ -4,31 +4,11 @@ import { Tool } from '../types/Tool';
 // In a production app, this would likely be stored in a database
 let agents: Tool[] = [
   {
-    id: 'agent1',
-    name: 'General Assistant',
-    description: 'A general-purpose AI assistant that can help with various tasks.',
-    icon: '🤖',
-    webhookUrl: '/api/agents/general',
-  },
-  {
-    id: 'agent2',
-    name: 'Code Helper',
-    description: 'An AI assistant specialized in helping with programming tasks.',
-    icon: '👨‍💻',
-    webhookUrl: '/api/agents/code',
-  },
-  {
-    id: 'agent3',
-    name: 'Writing Assistant',
-    description: 'An AI assistant that helps with writing and content creation.',
-    icon: '✍️',
-    webhookUrl: '/api/agents/writing',
-  },
-  {
     id: 'xthreads',
     name: 'X/Threads Assistant',
     description: 'An AI assistant that helps generate content for X (Twitter) and Threads posts.',
     icon: '🐦',
+    category: 'social',
     webhookUrl: '/api/agents/xthreads',
   },
   {
@@ -37,6 +17,7 @@ let agents: Tool[] = [
     description: 'Plan, structure, and optimize your podcast content with AI assistance',
     icon: '🎙️',
     category: 'content',
+    webhookUrl: '/api/agents/podcastflow',
   },
 ];
 

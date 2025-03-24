@@ -4,4 +4,5 @@ export interface Tool {
   description: string;
   icon: string;
   category: 'social' | 'content' | 'development' | 'analysis' | 'other';
+  webhookUrl?: string;
 } 

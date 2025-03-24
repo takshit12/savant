@@ -22,13 +22,8 @@ export default function AssistantFactory({ tool, onClose }: AssistantFactoryProp
       return <XThreadsInterface tool={tool} onClose={onClose} />;
     case 'podcastflow':
       return <PodcastFlowInterface tool={tool} onClose={onClose} />;
-      
-    // Add new assistants here
-    // case 'your-new-assistant-id':
-    //   return <YourNewAssistantInterface tool={tool} onClose={onClose} />;
-      
-    // Default to base assistant interface
     default:
+      console.warn(`No specific interface found for tool ${tool.id}, using base interface`);
       return <BaseAssistantInterface tool={tool} onClose={onClose} />;
   }
 }
