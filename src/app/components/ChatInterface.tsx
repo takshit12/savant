@@ -12,6 +12,12 @@ interface Message {
   timestamp: Date;
 }
 
+interface ApiResponse {
+  message: string;
+  error?: string;
+  details?: string;
+}
+
 interface ChatInterfaceProps {
   tool: Tool;
   onClose: () => void;
@@ -174,15 +180,16 @@ export default function ChatInterface({ tool, onClose }: ChatInterfaceProps) {
       timestamp: new Date(),
     };
     
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages((prev: Message[]) => [...prev, userMessage]);
     setInputValue('');
     setIsLoading(true);
     
     try {
       // Extract the direct webhook URL from the tool's API endpoint if possible
       // This assumes the webhookUrl is in the format "/api/agents/[id]"
-      let directWebhookUrl = tool.webhookUrl;
-      if (tool.webhookUrl.startsWith('/api/agents/')) {
+      let directWebhookUrl = tool.webhookUrl || `/api/agents/${tool.id}`;
+      
+      if (tool.webhookUrl && tool.webhookUrl.startsWith('/api/agents/')) {
         // Extract the agent ID
         const agentId = tool.webhookUrl.split('/').pop();
         // Use the webhook directly based on the agent type
@@ -197,7 +204,7 @@ export default function ChatInterface({ tool, onClose }: ChatInterfaceProps) {
       console.log(`ChatInterface: Sending request to ${directWebhookUrl}`);
       
       // Call the webhook
-      const response = await axios.post(directWebhookUrl, {
+      const response = await axios.post<ApiResponse>(directWebhookUrl, {
         message: inputValue,
         source: 'savant-tools-ui',
         toolId: tool.id,
@@ -213,55 +220,34 @@ export default function ChatInterface({ tool, onClose }: ChatInterfaceProps) {
       console.log('ChatInterface: Received response:', response.status);
       console.log('ChatInterface: Response data:', response.data);
       
-      // Format the response message for better display
-      // Handle both direct webhook responses and our API responses
-      const responseText = typeof response.data === 'string' 
-        ? response.data 
-        : response.data.message || JSON.stringify(response.data);
-      
-      const formattedContent = formatResponse(responseText);
-      
       const agentMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: formattedContent || "Sorry, I couldn't process that request.",
+        content: response.data.message || 'No response content received',
         isUser: false,
         timestamp: new Date(),
       };
       
-      setMessages((prev) => [...prev, agentMessage]);
-    } catch (error) {
-      console.error('ChatInterface: Error sending message:', error);
+      setMessages((prev: Message[]) => [...prev, agentMessage]);
       
-      let errorContent = "Sorry, there was an error processing your request.";
+    } catch (err: unknown) {
+      console.error('ChatInterface: Error:', err);
       
-      // Try to extract more detailed error information
-      if (axios.isAxiosError(error) && error.response) {
-        console.error('ChatInterface: Error response data:', error.response.data);
-        
-        if (error.response.data.error) {
-          errorContent = `Error: ${error.response.data.error}`;
-          if (error.response.data.details) {
-            errorContent += `\n\nDetails: ${error.response.data.details}`;
-          }
-        }
-        
-        setError(`HTTP Error ${error.response.status}: ${error.response.statusText}`);
-      } else if (axios.isAxiosError(error) && error.code === 'ECONNABORTED') {
-        // Handle client-side timeout
-        errorContent = "Error: Request timed out. The server took too long to respond.";
-        setError("Request timed out after 2 minutes");
-      } else if (error instanceof Error) {
-        setError(`Error: ${error.message}`);
+      let errorMessage = 'An unexpected error occurred';
+      
+      if (err && typeof err === 'object' && 'message' in err) {
+        errorMessage = String(err.message);
       }
       
-      const errorMessage: Message = {
+      setError(errorMessage);
+      
+      const errorResponseMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: errorContent,
+        content: `Error: ${errorMessage}`,
         isUser: false,
         timestamp: new Date(),
       };
       
-      setMessages((prev) => [...prev, errorMessage]);
+      setMessages((prev: Message[]) => [...prev, errorResponseMessage]);
     } finally {
       setIsLoading(false);
     }
